@@ -21,9 +21,11 @@ import cpp.vm.Debugger;
 import debugger.IController;
 
 #if cpp
+import cpp.vm.Deque;
 import cpp.vm.Mutex;
 import cpp.vm.Thread;
 #elseif neko
+import neko.vm.Deque;
 import neko.vm.Mutex;
 import neko.vm.Thread;
 #else
@@ -98,7 +100,7 @@ class DebuggerThread
         if (startStopped) {
             // Cannot proceed until the debugger thread has notified us that
             // it's OK to proceed
-            Thread.readMessage(true);
+            gStartQueue.pop(true);
         }
         
         // Once this function is called, the current thread can break
@@ -127,7 +129,7 @@ class DebuggerThread
             // Signal to the started debugger thread to proceed (which will
             // cause it to immediately break at the instruction after its
             // readMessage() call in its constructor)
-            gStartedDebuggerThread.sendMessage(true);
+            gStartQueue.push(true);
         }
 
         // Now run the main loop
@@ -1067,7 +1069,8 @@ class DebuggerThread
 
     private var mDebuggerVariables : DebuggerVariables;
 
-    private static var gStartMutex = new Mutex();
+    private static var gStartMutex : Mutex = new Mutex();
+    private static var gStartQueue : Deque<Bool> = new Deque<Bool>();
     private static var gStarted : Bool = false;
     private static var gStartedDebuggerThread : Thread = null;
 }
