@@ -108,19 +108,39 @@ class HaxeServer
 
             // Push the socket to the command thread to read from
             mSocketQueue.push(socket);
+            mReadCommandQueue.push(true);
 
             try {
                 while (true) {
                     // Read messages from server and pass them on to the
-                    // controller
-                    controller.acceptMessage
-                        (HaxeProtocol.readMessage(socket.input));
-                    // OK to show the next prompt; pop whatever is there to
-                    // ensure that there is never more than one element in
-                    // there.  This helps with "source" commands that issue
-                    // tons of commands in sequence
-                    mReadCommandQueue.pop(false);
-                    mReadCommandQueue.push(true);
+                    // controller.  But first check the type; only allow
+                    // the next prompt to be printed on non-thread messages.
+                    var message : Message =
+                        HaxeProtocol.readMessage(socket.input);
+
+                    var okToShowPrompt : Bool = false;
+
+                    switch (message) {
+                    case ThreadCreated(number):
+                    case ThreadTerminated(number):
+                    case ThreadStarted(number):
+                    case ThreadStopped(number, className, functionName,
+                                       fileName, lineNumber):
+                    default:
+                        okToShowPrompt = true;
+                    }
+
+                    controller.acceptMessage(message);
+
+                    if (okToShowPrompt) {
+                        // OK to show the next prompt; pop whatever is there
+                        // to ensure that there is never more than one element
+                        // in there.  This helps with "source" commands that
+                        // issue tons of commands in sequence
+                        while (mReadCommandQueue.pop(false)) {
+                        }
+                        mReadCommandQueue.push(true);
+                    }
                 }
             }
             catch (e : haxe.io.Eof) {
@@ -143,12 +163,11 @@ class HaxeServer
             // server
             try {
                 while (true) {
+                    // Wait until the command prompt should be shown
+                    mReadCommandQueue.pop(true);
+
                     HaxeProtocol.writeCommand
                         (socket.output, mController.getNextCommand());
-                    
-                    // Wait until the command was responded to so as not to
-                    // write the next command prompt too early
-                    mReadCommandQueue.pop(true);
                 }
             }
             catch (e : haxe.io.Eof) {

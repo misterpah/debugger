@@ -39,9 +39,11 @@ class CommandLineController implements IController
         Sys.println("-=- hxcpp built-in debugger in command line mode -=-");
         Sys.println("-=-      Use 'help' for help if you need it.     -=-");
         Sys.println("-=-                  Have fun!                   -=-");
+        mUnsafeMode = false;
         mInputs = new Array<haxe.io.Input>();
         mInputs.push(Sys.stdin());
         mStoredCommands = new Array<String>();
+        mLastCommand = null;
         // Command 0 is not valid
         mStoredCommands.push("");
         this.setupRegexHandlers();
@@ -107,9 +109,29 @@ class CommandLineController implements IController
                 continue;
             }
 
-            // Skip empty lines
+            // If the line is empty, the skip it unless the input is
+            // stdin and the last command was one of the commands that
+            // is repeated automatically (continue, step, next, finish, up,
+            // and down)
             if (commandLine.length == 0) {
-                continue;
+                // If reading from a sourced file or this is the first
+                // command, don't try to repeat
+                if ((mInputs.length > 1) || (mLastCommand == null)) {
+                    continue;
+                }
+                switch (mLastCommand) {
+                case Continue(n):
+                case Step(n):
+                case Next(n):
+                case Finish(n):
+                case Up(n):
+                case Down(n):
+                default:
+                    // For anything other than the above, read a new command
+                    continue;
+                }
+                // For Continue, Step, Next, Finish, Up, or Down, repeat
+                return mLastCommand;
             }
 
             var charZero = commandLine.charAt(0);
@@ -159,6 +181,7 @@ class CommandLineController implements IController
             if (command != null) {
                 // Instruction was not handled locally, so pass it on to the
                 // debugger
+                mLastCommand = command;
                 return command;
             }
         }
@@ -335,11 +358,12 @@ class CommandLineController implements IController
                         needNewline = true;
                     }
                     Sys.print("Thread " + number + " (");
+                    var isRunning : Bool = false;
                     switch (status) {
                     case Running:
                         Sys.println("running)");
                         list = next;
-                        continue;
+                        isRunning = true;
                     case StoppedImmediate:
                         Sys.println("stopped):");
                     case StoppedBreakpoint(number):
@@ -365,7 +389,7 @@ class CommandLineController implements IController
                             frameList = next;
                         }
                     }
-                    if (!hasStack) {
+                    if (!hasStack && !isRunning) {
                         Sys.println("No stack.");
                     }
                     list = next;
@@ -546,6 +570,32 @@ class CommandLineController implements IController
         return SetCurrentThread(Std.parseInt(regex.matched(1)));
     }
 
+    private function unsafe(regex : EReg) : Null<Command>
+    {
+        if (mUnsafeMode) {
+            Sys.println("Already in unsafe mode.");
+        }
+        else {
+            mUnsafeMode = true;
+            Sys.println("Now in unsafe mode.");
+        }
+
+        return null;
+    }
+
+    private function safe(regex : EReg) : Null<Command>
+    {
+        if (mUnsafeMode) {
+            mUnsafeMode = false;
+            Sys.println("Now in safe mode.");
+        }
+        else {
+            Sys.println("Already in safe mode.");
+        }
+
+        return null;
+    }
+
     private function break_now(regex : EReg) : Null<Command>
     {
         return BreakNow;
@@ -723,7 +773,7 @@ class CommandLineController implements IController
 
     private function where(regex : EReg) : Null<Command>
     {
-        return WhereCurrentThread;
+        return WhereCurrentThread(mUnsafeMode);
     }
 
     private function where_all(regex : EReg) : Null<Command>
@@ -760,12 +810,12 @@ class CommandLineController implements IController
 
     private function variables(regex : EReg) : Null<Command>
     {
-        return Variables;
+        return Variables(mUnsafeMode);
     }
 
     private function print_expression(regex : EReg) : Null<Command>
     {
-        return PrintExpression(regex.matched(2));
+        return PrintExpression(mUnsafeMode, regex.matched(2));
     }
 
     private function set_expression(regex : EReg) : Null<Command>
@@ -779,7 +829,8 @@ class CommandLineController implements IController
             return null;
         }
 
-        return SetExpression(expr.substr(0, index), expr.substr(index + 1));
+        return SetExpression(mUnsafeMode, expr.substr(0, index),
+                             expr.substr(index + 1));
     }
 
     // Utility functions and helpers -----------------------------------------
@@ -946,6 +997,8 @@ class CommandLineController implements IController
   { r: ~/^compact[\s]*$/, h: compact },
   { r: ~/^collect[\s]*$/, h: collect },
   { r: ~/^thread[\s]+([0-9]+)[\s]*$/, h: set_current_thread },
+  { r: ~/^unsafe[\s]*$/, h: unsafe },
+  { r: ~/^safe[\s]*$/, h: safe },
   { r: ~/^(b|break)[\s]*$/, h : break_now },
   { r: ~/^(b|break)[\s]+([^:]+):[\s]*([0-9]+)[\s]*$/, h : break_file_line },
   { r: ~/^(b|break)[\s]+([a-zA-Z_][a-zA-Z0-9_]*)[\s]*\.[\s]*([a-zA-Z_][a-zA-Z0-9_]*)[\s]*$/, h : break_class_function },
@@ -991,8 +1044,10 @@ class CommandLineController implements IController
                           ];
     }
 
+    private var mUnsafeMode : Bool;
     private var mInputs : Array<haxe.io.Input>;
     private var mStoredCommands : Array<String>;
+    private var mLastCommand : Command;
     private var mRegexHandlers : Array<RegexHandler>;
     private static var gRegexQuotes = ~/^[\s]*"([^"]+)"[\s]*$/;
     private static var gRegexNoQuotes = ~/^[\s]*([^\s"]+)[\s]*$/;
@@ -1009,6 +1064,10 @@ class CommandLineController implements IController
      "   844323 bytes used.\n\n" +
      "The history of commands that can be repeated is printed by the\n" +
      "'history' command.\n\n" +
+     "Some commands are repeated if an empty line is read immediately after\n" +
+     "the command.  The commands which repeat are: continue, step, next,\n" +
+     "finish, up, and down.  Commands are only repeated when commands are\n" +
+     "being read from the user (not when sourcing files).\n\n" +
      "If at any time an asynchronous threading message interrupts a command\n" +
      "being typed in, ending the command with '\\' will re-print the\n" +
      "current command prompt and command in progress.  For example:\n\n" +
@@ -1093,6 +1152,25 @@ class CommandLineController implements IController
      "this thread the current thread.  The current thread is the thread\n" +
      "which is targeted by the following commands:\n\n" +
      "  continue, step, next, finish, where, up, down, frame, print, set" },
+
+         { c : "unsafe",    s : "Puts the debugger into unsafe mode",
+ l : "Syntax: unsafe\n\n" +
+     "The unsafe command puts the debugger into unsafe mode.  In unsafe\n" +
+     "mode, the debugger will print stack traces and allow the printing\n" +
+     "and setting of stack variables for threads which are not stopped.\n" +
+     "this is extremely unsafe and could lead to program crashes or other\n" +
+     "undefined behavior as threads which are actively running are\n" +
+     "manipulated in unsafe mode.  However, if a thread is hung and cannot\n" +
+     "be induced to break at a breakpoint, unsafe mode can allow the\n" +
+     "inspection of the thread's state to determine what the cause of the\n" +
+     "hang could be.  To leave unsafe mode, use the 'safe' command." },
+
+         { c : "safe",      s : "Puts the debugger into safe mode",
+ l : "Syntax: safe\n\n" +
+     "The safe command puts the debugger back into safe mode from unsafe\n" +
+     "mode.  In safe mode, the call stack of only stopped threads can be\n" +
+     "examined and call stack variables of only stopped threads can be\n" +
+     "printed or modified.  To leave safe mode, use the 'unsafe' command." },
 
          { c : "break",     s : "Sets a breakpoint",
  l : "Syntax: break <file>:<line>/<class>.<function>\n\n" +

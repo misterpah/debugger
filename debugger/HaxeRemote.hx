@@ -86,8 +86,22 @@ class HaxeRemote implements IController
      **/
     public function acceptMessage(message : Message) : Void
     {
-        // Write it to the socket
-        HaxeProtocol.writeMessage(mSocket.output, message);
+        // Try a few times ...
+        var lastException : Dynamic = null;
+        for (i in 0 ... 5) {
+            try {
+                HaxeProtocol.writeMessage(mSocket.output, message);
+                return;
+            }
+            catch (e : Dynamic) {
+                Sys.println("Failed to deliver message to server, trying " +
+                            "again in 1 second.");
+                lastException = e;
+                Sys.sleep(1);
+            }
+        }
+        Sys.println("Failed to deliver message " + message +
+                    " to server five times, giving up: " + lastException);
     }
 
     private function connect()

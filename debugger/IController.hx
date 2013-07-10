@@ -123,7 +123,7 @@ enum Command
     Finish(count : Int);
     // Response: Continued, ErrorBadCount
 
-    WhereCurrentThread;
+    WhereCurrentThread(unsafe : Bool);
     // Response: ThreadsWhere, ErrorCurrentThreadNotStopped
 
     WhereAllThreads;
@@ -138,13 +138,13 @@ enum Command
     SetFrame(number : Int);
     // Response: CurrentFrame, ErrorCurrentThreadNotStopped, ErrorBadCount
 
-    Variables();
+    Variables(unsafe : Bool);
     // Response: ErrorCurrentThreadNotStopped, Variables
 
-    PrintExpression(expression : String);
+    PrintExpression(unsafe : Bool, expression : String);
     // Response: Value, ErrorCurrentThreadNotStopped, ErrorEvaluatingExpression
 
-    SetExpression(lhs : String, rhs : String);
+    SetExpression(unsafe: Bool, lhs : String, rhs : String);
     // Response: Valuet, ErrorCurrentThreadNotStopped,
     // ErrorEvaluatingExpression
 }

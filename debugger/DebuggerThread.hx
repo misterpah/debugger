@@ -206,8 +206,8 @@ class DebuggerThread
                 case Finish(count):
                     emit(this.finish(count));
 
-                case WhereCurrentThread:
-                    emit(this.whereCurrentThread());
+                case WhereCurrentThread(unsafe):
+                    emit(this.whereCurrentThread(unsafe));
 
                 case WhereAllThreads:
                     emit(this.whereAllThreads());
@@ -221,14 +221,14 @@ class DebuggerThread
                 case SetFrame(number):
                     emit(this.setFrame(number));
 
-                case Variables:
-                    emit(this.variables());
+                case Variables(unsafe):
+                    emit(this.variables(unsafe));
 
-                case PrintExpression(expression):
-                    emit(this.printExpression(expression));
+                case PrintExpression(unsafe, expression):
+                    emit(this.printExpression(unsafe, expression));
 
-                case SetExpression(lhs, rhs):
-                    emit(this.setExpression(lhs, rhs));
+                case SetExpression(unsafe, lhs, rhs):
+                    emit(this.setExpression(unsafe, lhs, rhs));
                 }
             }
         }
@@ -709,14 +709,14 @@ class DebuggerThread
         return this.stepExecution(count, Debugger.STEP_OUT);
     }
 
-    private function whereCurrentThread() : Message
+    private function whereCurrentThread(unsafe : Bool) : Message
     {
         // Latch the current thread number, because it may change, and the
         // value used in any print calls should match the value used in the
         // getThreadInfo call
         mStateMutex.acquire();
         
-        var threadInfo : ThreadInfo = this.getCurrentThreadInfoLocked();
+        var threadInfo : ThreadInfo = this.getCurrentThreadInfoLocked(unsafe);
 
         if (threadInfo == null) {
             mStateMutex.release();
@@ -872,7 +872,7 @@ class DebuggerThread
         return CurrentFrame(number);
     }
 
-    private function variables() : Message
+    private function variables(unsafe : Bool) : Message
     {
         mStateMutex.acquire();
         
@@ -880,8 +880,7 @@ class DebuggerThread
         this.getCurrentThreadInfoLocked();
         
         var variables : Array<String> = Debugger.getStackVariables
-            (mCurrentThreadNumber, mCurrentStackFrame);
-
+            (mCurrentThreadNumber, mCurrentStackFrame, unsafe);
 
         if ((variables.length == 1) &&
             (variables[0] == Debugger.THREAD_NOT_STOPPED)) {
@@ -905,7 +904,8 @@ class DebuggerThread
         return Variables(list);
     }
 
-    private function printExpression(expression : String) : Message
+    private function printExpression(unsafe : Bool,
+                                     expression : String) : Message
     {
         mStateMutex.acquire();
         
@@ -916,7 +916,8 @@ class DebuggerThread
             var value : Dynamic = ExpressionHelper.getValue
                 (expression, { threadNumber : mCurrentThreadNumber,
                                stackFrame : mCurrentStackFrame,
-                               dbgVars : mDebuggerVariables });
+                               dbgVars : mDebuggerVariables,
+                               unsafe : unsafe });
 
             mStateMutex.release();
 
@@ -938,7 +939,8 @@ class DebuggerThread
         }
     }
 
-    private function setExpression(lhs : String, rhs : String) : Message
+    private function setExpression(unsafe : Bool, lhs : String,
+                                   rhs : String) : Message
     {
         mStateMutex.acquire();
         
@@ -949,7 +951,8 @@ class DebuggerThread
             var value : Dynamic = ExpressionHelper.setValue
                 (lhs, rhs, { threadNumber : mCurrentThreadNumber,
                              stackFrame : mCurrentStackFrame,
-                             dbgVars : mDebuggerVariables });
+                             dbgVars : mDebuggerVariables,
+                             unsafe : unsafe });
 
             mStateMutex.release();
 
@@ -1025,14 +1028,20 @@ class DebuggerThread
         return -1;
     }
 
-    private function getCurrentThreadInfoLocked() : ThreadInfo
+    private function getCurrentThreadInfoLocked
+                                           (unsafe : Bool = false) : ThreadInfo
     {
+        if (unsafe) {
+            mCurrentThreadInfo = null;
+            return Debugger.getThreadInfo(mCurrentThreadNumber, unsafe);
+        }
+
         if (mCurrentThreadInfo != null) {
             return mCurrentThreadInfo;
         }
 
         mCurrentThreadInfo = Debugger.getThreadInfo
-            (mCurrentThreadNumber);
+            (mCurrentThreadNumber, unsafe);
         
         if (mCurrentThreadInfo == null) {
             return null;
@@ -1398,7 +1407,8 @@ private class Breakpoint
  **/
 typedef DbgVarSrc = { var threadNumber : Int;
                       var stackFrame : Int;
-                      var dbgVars : DebuggerVariables; };
+                      var dbgVars : DebuggerVariables;
+                      var unsafe : Bool; };
 
 // This is a helper class that can parse Haxe expressions and evaluate them
 // into values, or use them to set references to other values
@@ -1449,7 +1459,8 @@ private class ExpressionHelper
             arr[index] = rhs_value;
         case ExpressionEnum.StackRef(name):
             return Debugger.setStackVariableValue
-                (varSrc.threadNumber, varSrc.stackFrame, name, rhs_value);
+                (varSrc.threadNumber, varSrc.stackFrame, name, rhs_value,
+                 varSrc.unsafe);
         }
 
         return rhs_value;
@@ -1481,7 +1492,7 @@ private class ExpressionHelper
             }
             return arr[index];
         case ExpressionEnum.StackRef(name):
-            return getStackValue(name, varSrc.threadNumber, varSrc.stackFrame);
+            return getStackValue(name, varSrc);
         }
     }
 
@@ -1598,11 +1609,11 @@ private class ExpressionHelper
         }
     }
 
-    private static function getStackValue(name : String, threadNumber : Int,
-                                          stackFrame : Int) : Dynamic
+    private static function getStackValue(name : String,
+                                          varSrc : DbgVarSrc) : Dynamic
     {
         var value : Dynamic = Debugger.getStackVariableValue
-                (threadNumber, stackFrame, name);
+            (varSrc.threadNumber, varSrc.stackFrame, name, varSrc.unsafe);
 
         if (value == Debugger.THREAD_NOT_STOPPED) {
             throw value;
@@ -1690,7 +1701,7 @@ private class ExpressionHelper
 
         // Try to resolve to a stack field reference
         var value : Dynamic = Debugger.getStackVariableValue
-                (varSrc.threadNumber, varSrc.stackFrame, arr[0]);
+            (varSrc.threadNumber, varSrc.stackFrame, arr[0], varSrc.unsafe);
 
         // Can't resolve fields on running threads.
         if (value == Debugger.THREAD_NOT_STOPPED) {
@@ -1700,7 +1711,8 @@ private class ExpressionHelper
         if (value == Debugger.NONEXISTENT_VALUE) {
             // Try to get it as a field of "this"
             value = Debugger.getStackVariableValue
-                (varSrc.threadNumber, varSrc.stackFrame, "this");
+                (varSrc.threadNumber, varSrc.stackFrame, "this",
+                 varSrc.unsafe);
             if (value == Debugger.THREAD_NOT_STOPPED) {
                 throw value;
             }
@@ -1831,7 +1843,7 @@ private class ExpressionHelper
         }
 
         // Can only be a stack reference otherwise
-        return getStackValue(value, varSrc.threadNumber, varSrc.stackFrame);
+        return getStackValue(value, varSrc);
     }
 
     private static var gNumberRegex = ~/^-?[0-9]*(\.?)[0-9]*$/;
