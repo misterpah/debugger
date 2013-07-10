@@ -1,7 +1,7 @@
 /** **************************************************************************
  * Local.hx
  *
- * Copyright (c) 2013 by the contributors
+ * Copyright (c) 2013 TiVo, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
