@@ -75,12 +75,6 @@ class DebuggerThread
         gStarted = true;
         gStartMutex.release();
 
-        // If supposed to start stopped, then store this Thread so that the
-        // debug thread can notify us to go
-        if (startStopped) {
-            gStartedDebuggerThread = Thread.current();
-        }
-
         // Set up instance state
         mStateMutex = new Mutex();
         mController = controller;
@@ -91,15 +85,20 @@ class DebuggerThread
         mNextBreakpointNumber = 1;
         mDebuggerVariables = new DebuggerVariables();
 
+        // Set gStartStopped so that the debugger thread will know whether to
+        // stop the program
+        gStartStopped = startStopped;
+        
         // Start the real debugger thread running.  Before doing so, ensure
         // that the current thread will not stop until this function is
         // exited.
         Debugger.enableCurrentThreadDebugging(false);
+
         Thread.create(debuggerThreadMain);
 
         if (startStopped) {
             // Cannot proceed until the debugger thread has notified us that
-            // it's OK to proceed
+            // it's OK to proceed.
             gStartQueue.pop(true);
         }
         
@@ -122,13 +121,21 @@ class DebuggerThread
         // If the 'started debugger thread' is set, it means that debugging
         // was to start with all threads (aside from the debugger thread)
         // stopped, so do so now.
-        if (gStartedDebuggerThread != null) {
-            // This call does not return until all threads (except for the
-            // calling thread) have been broken.
-            Debugger.breakNow();
+        if (gStartStopped) {
+            // Ensure that the main thread will break once it gets past its
+            // unbreakable region - but don't wait for it to break since it's
+            // currently blocking on gStartQueue.
+            Debugger.breakNow(false);
             // Signal to the started debugger thread to proceed (which will
             // cause it to immediately break at the instruction after its
-            // readMessage() call in its constructor)
+            // readMessage() call in its constructor).
+            gStartQueue.push(true);
+            // This call does not return until all threads (except for the
+            // calling thread) have been broken.
+            Debugger.breakNow(true);
+        }
+        // Else, just let the main thread go now
+        else {
             gStartQueue.push(true);
         }
 
@@ -1070,9 +1077,9 @@ class DebuggerThread
     private var mDebuggerVariables : DebuggerVariables;
 
     private static var gStartMutex : Mutex = new Mutex();
-    private static var gStartQueue : Deque<Bool> = new Deque<Bool>();
     private static var gStarted : Bool = false;
-    private static var gStartedDebuggerThread : Thread = null;
+    private static var gStartStopped : Bool;
+    private static var gStartQueue : Deque<Bool> = new Deque<Bool>();
 }
 
 
