@@ -20,6 +20,14 @@ package debugger;
 import debugger.HaxeProtocol;
 import debugger.IController;
 
+#if cpp
+import cpp.vm.Mutex;
+#elseif neko
+import neko.vm.Mutex;
+#else
+#error "HaxeRemote supported only for cpp and neko targets"
+#end
+
 
 /**
  * This class creates a networked command-line debugger that communicates with
@@ -50,29 +58,34 @@ class HaxeRemote implements IController
         mHost = host;
         mPort = port;
         mSocket = null;
-
+        mSocketMutex = new Mutex();
+        mAcceptMutex = new Mutex();
         mThread = new DebuggerThread(this, startStopped);
     }
 
     public function getNextCommand() : Command
     {
         while (true) {
-            // Connect on demand ...
+            var socket;
+            mSocketMutex.acquire();
             if (mSocket == null) {
-                this.connect();
-                Sys.println("Connected to debugging server at " + 
-                            mHost + ":" + mPort + ".");
+                this.connectLocked();
             }
-
+            socket = mSocket;
+            mSocketMutex.release();
             try {
-                return HaxeProtocol.readCommand(mSocket.input);
+                return HaxeProtocol.readCommand(socket.input);
             }
             catch (e : Dynamic) {
                 Sys.println("Failed to read command from server at " + 
                             mHost + ":" + mPort + ": " + e);
                 Sys.println("Closing connection and trying again.");
-                mSocket.close();
-                mSocket = null;
+                socket.close();
+                mSocketMutex.acquire();
+                if (mSocket == socket) {
+                    mSocket = null;
+                }
+                mSocketMutex.release();
             }
         }
     }
@@ -86,25 +99,36 @@ class HaxeRemote implements IController
      **/
     public function acceptMessage(message : Message) : Void
     {
-        // Try a few times ...
-        var lastException : Dynamic = null;
-        for (i in 0 ... 5) {
+        while (true) {
+            var socket;
+            mSocketMutex.acquire();
+            if (mSocket == null) {
+                this.connectLocked();
+            }
+            socket = mSocket;
+            mSocketMutex.release();
+            mAcceptMutex.acquire();
             try {
-                HaxeProtocol.writeMessage(mSocket.output, message);
+                HaxeProtocol.writeMessage(socket.output, message);
+                mAcceptMutex.release();
                 return;
             }
             catch (e : Dynamic) {
-                Sys.println("Failed to deliver message to server, trying " +
-                            "again in 1 second.");
-                lastException = e;
-                Sys.sleep(1);
+                mAcceptMutex.release();
+                Sys.println("Failed to deliver message to server at " + 
+                            mHost + ":" + mPort + ": " + e);
+                Sys.println("Closing connection and trying again.");
+                socket.close();
+                mSocketMutex.acquire();
+                if (mSocket == socket) {
+                    mSocket = null;
+                }
+                mSocketMutex.release();
             }
         }
-        Sys.println("Failed to deliver message " + message +
-                    " to server five times, giving up: " + lastException);
     }
 
-    private function connect()
+    private function connectLocked()
     {
         mSocket = new sys.net.Socket();
         while (true) {
@@ -116,6 +140,8 @@ class HaxeRemote implements IController
                 mSocket.connect(host, mPort);
                 HaxeProtocol.writeClientIdentification(mSocket.output);
                 HaxeProtocol.readServerIdentification(mSocket.input);
+                Sys.println("Connected to debugging server at " + 
+                            mHost + ":" + mPort + ".");
                 return;
             }
             catch (e : Dynamic) {
@@ -130,5 +156,7 @@ class HaxeRemote implements IController
     private var mHost : String;
     private var mPort : Int;
     private var mSocket : sys.net.Socket;
+    private var mSocketMutex : Mutex;
+    private var mAcceptMutex : Mutex;
     private var mThread : DebuggerThread;
 }
