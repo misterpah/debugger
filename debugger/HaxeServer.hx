@@ -1,7 +1,7 @@
 /** **************************************************************************
  * HaxeServer.hx
  *
- * Copyright (c) 2013 TiVo, Inc.
+ * Copyright (c) 2013 by the contributors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
