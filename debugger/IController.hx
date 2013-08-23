@@ -148,6 +148,8 @@ enum Command
     SetExpression(unsafe: Bool, lhs : String, rhs : String);
     // Response: Valuet, ErrorCurrentThreadNotStopped,
     // ErrorEvaluatingExpression
+	
+	CommandId(id: Int, command: Command);
 }
 
 
@@ -284,4 +286,6 @@ enum Message
     ThreadStarted(number : Int);
     ThreadStopped(number : Int, className : String, functionName : String,
                   fileName : String, lineNumber : Int);
+
+	MessageId(id : Int, message : Message);
 }

@@ -143,107 +143,116 @@ class DebuggerThread
         // Now run the main loop
         try {
             while (true) {
-                switch (mController.getNextCommand()) {
+				var cmd:Command = mController.getNextCommand();
+				var id:Int = -1;
+				switch (cmd) {
+				case CommandId(id2, cmd2):
+					id = id2;
+					cmd = cmd2;
+				default:
+				}
+                switch (cmd) {
+				case CommandId(id2, cmd2):
                 case Exit:
-                    emit(Exited);
+                    emit(Exited, id);
                     Sys.exit(0);
 
                 case Detach:
-                    emit(Detached);
+                    emit(Detached, id);
                     return;
 
                 case Files:
-                    emit(this.files());
+                    emit(this.files(), id);
 
                 case Classes:
-                    emit(this.classes());
+                    emit(this.classes(), id);
 
                 case Mem:
-                    emit(this.mem());
+                    emit(this.mem(), id);
 
                 case Compact:
-                    emit(this.compact());
+                    emit(this.compact(), id);
 
                 case Collect:
-                    emit(this.collect());
+                    emit(this.collect(), id);
 
                 case SetCurrentThread(number):
-                    emit(this.setCurrentThread(number));
+                    emit(this.setCurrentThread(number), id);
 
                 case AddFileLineBreakpoint(fileName, lineNumber):
-                    emit(this.addFileLineBreakpoint(fileName, lineNumber));
+                    emit(this.addFileLineBreakpoint(fileName, lineNumber), id);
                     
                 case AddClassFunctionBreakpoint(className, functionName):
                     emit(this.addClassFunctionBreakpoint
-                         (className, functionName));
+                         (className, functionName), id);
 
                 case ListBreakpoints(enabled, disabled):
-                    emit(this.listBreakpoints(enabled, disabled));
+                    emit(this.listBreakpoints(enabled, disabled), id);
 
                 case DescribeBreakpoint(number):
-                    emit(this.describeBreakpoint(number));
+                    emit(this.describeBreakpoint(number), id);
 
                 case DisableAllBreakpoints:
-                    emit(this.disableAllBreakpoints());
+                    emit(this.disableAllBreakpoints(), id);
 
                 case DisableBreakpointRange(first, last):
-                    emit(this.disableBreakpointRange(first, last));
+                    emit(this.disableBreakpointRange(first, last), id);
 
                 case EnableAllBreakpoints:
-                    emit(this.enableAllBreakpoints());
+                    emit(this.enableAllBreakpoints(), id);
 
                 case EnableBreakpointRange(first, last):
-                    emit(this.enableBreakpointRange(first, last));
+                    emit(this.enableBreakpointRange(first, last), id);
 
                 case DeleteAllBreakpoints:
-                    emit(this.deleteAllBreakpoints());
+                    emit(this.deleteAllBreakpoints(), id);
 
                 case DeleteBreakpointRange(first, last):
-                    emit(this.deleteBreakpointRange(first, last));
+                    emit(this.deleteBreakpointRange(first, last), id);
 
                 case BreakNow:
-                    emit(this.breakNow());
+                    emit(this.breakNow(), id);
 
                 case Continue(count):
-                    emit(this.continueCurrent(count));
+                    emit(this.continueCurrent(count), id);
 
                 case Step(count):
-                    emit(this.step(count));
+                    emit(this.step(count), id);
 
                 case Next(count):
-                    emit(this.next(count));
+                    emit(this.next(count), id);
 
                 case Finish(count):
-                    emit(this.finish(count));
+                    emit(this.finish(count), id);
 
                 case WhereCurrentThread(unsafe):
-                    emit(this.whereCurrentThread(unsafe));
+                    emit(this.whereCurrentThread(unsafe), id);
 
                 case WhereAllThreads:
-                    emit(this.whereAllThreads());
+                    emit(this.whereAllThreads(), id);
 
                 case Up(count):
-                    emit(this.up(count));
+                    emit(this.up(count), id);
 
                 case Down(count):
-                    emit(this.down(count));
+                    emit(this.down(count), id);
 
                 case SetFrame(number):
-                    emit(this.setFrame(number));
+                    emit(this.setFrame(number), id);
 
                 case Variables(unsafe):
-                    emit(this.variables(unsafe));
+                    emit(this.variables(unsafe), id);
 
                 case PrintExpression(unsafe, expression):
-                    emit(this.printExpression(unsafe, expression));
+                    emit(this.printExpression(unsafe, expression), id);
 
                 case SetExpression(unsafe, lhs, rhs):
-                    emit(this.setExpression(unsafe, lhs, rhs));
+                    emit(this.setExpression(unsafe, lhs, rhs), id);
                 }
             }
         }
         catch (e : Dynamic) {
-            emit(ErrorInternal("Exception in debugger, detaching: " + e));
+            emitNoId(ErrorInternal("Exception in debugger, detaching: " + e));
         }
 
         // No longer want to know about thread events
@@ -252,7 +261,7 @@ class DebuggerThread
         // Delete all breakpoints from the debugged process
         this.deleteAllBreakpoints();
 
-        emit(Detached);
+        emitNoId(Detached);
 
         // Ensure that all threads are running
         Debugger.continueThreads(-1, 1);
@@ -269,33 +278,41 @@ class DebuggerThread
     {
         switch (event) {
         case Debugger.THREAD_CREATED:
-            emit(ThreadCreated(threadNumber));
+            emitNoId(ThreadCreated(threadNumber));
         case Debugger.THREAD_TERMINATED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadTerminated(threadNumber));
+            emitNoId(ThreadTerminated(threadNumber));
         case Debugger.THREAD_STARTED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadStarted(threadNumber));
+            emitNoId(ThreadStarted(threadNumber));
         case Debugger.THREAD_STOPPED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadStopped(threadNumber, className, functionName,
+            emitNoId(ThreadStopped(threadNumber, className, functionName,
                                fileName, lineNumber));
         }
     }
 
-    private function emit(message : Message)
+    private function emit(message : Message, id : Int)
+    {
+		if (id != -1) {
+			message = MessageId(id, message);
+		}
+        mController.acceptMessage(message);
+    }
+
+    private function emitNoId(message : Message)
     {
         mController.acceptMessage(message);
     }
