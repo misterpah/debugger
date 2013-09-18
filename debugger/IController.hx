@@ -149,7 +149,11 @@ enum Command
     // Response: Valuet, ErrorCurrentThreadNotStopped,
     // ErrorEvaluatingExpression
 	
-	CommandId(id: Int, command: Command);
+    CommandId(id: Int, command: Command);
+	// Response: MessageId
+
+    GetExpression(unsafe: Bool, expression : String);
+	// Response: Variable
 }
 
 
@@ -238,6 +242,22 @@ enum ThreadWhereList
           next : ThreadWhereList);
 }
 
+enum VariableValue
+{
+	Item(type : String, value : String, children : VariableNameList);
+}
+
+enum VariableName
+{
+	Variable(name : String, fullName : String, value : VariableValue);
+	VariableNoValue(name: String, fullName :  String);
+}
+
+enum VariableNameList
+{
+	Terminator;
+	Element(variable : VariableName, next: VariableNameList);
+}
 
 /**
  * Messages are delivered by the debugger thread in response to Commands and
@@ -288,4 +308,5 @@ enum Message
                   fileName : String, lineNumber : Int);
 
 	MessageId(id : Int, message : Message);
+    Variable(variable : VariableName);
 }

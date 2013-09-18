@@ -248,6 +248,9 @@ class DebuggerThread
 
                 case SetExpression(unsafe, lhs, rhs):
                     emit(this.setExpression(unsafe, lhs, rhs), id);
+				
+				case GetExpression(unsafe, expression):
+					emit(this.getExpression(unsafe, expression), id);
                 }
             }
         }
@@ -617,9 +620,9 @@ class DebuggerThread
         for (b in breakpoint.bps()) {
             switch (b) {
             case BP.FileLine(bp, fileName, lineNumber):
-                list = FileLine(fileName, lineNumber, list);
+                list = BreakpointLocationList.FileLine(fileName, lineNumber, list);
             case BP.ClassFunction(bp, className, functionName):
-                list = ClassFunction(className, functionName, list);
+                list = BreakpointLocationList.ClassFunction(className, functionName, list);
             }
         }
 
@@ -948,7 +951,7 @@ class DebuggerThread
 
             mStateMutex.release();
 
-            return Value(StringTools.trim(expression),
+            return Message.Value(StringTools.trim(expression),
                          TypeHelpers.getValueTypeName(value),
                          TypeHelpers.getValueString(value));
         }
@@ -965,6 +968,51 @@ class DebuggerThread
             }
         }
     }
+	
+	private function getExpression(unsafe : Bool, expression : String) : Message
+	{
+        mStateMutex.acquire();
+        
+        // Just to ensure that the current stack frame is known
+        this.getCurrentThreadInfoLocked();
+
+        try {
+            var value : Dynamic = ExpressionHelper.getValue
+                (expression, { threadNumber : mCurrentThreadNumber,
+                               stackFrame : mCurrentStackFrame,
+                               dbgVars : mDebuggerVariables,
+                               unsafe : unsafe });
+
+            mStateMutex.release();
+
+			// make new getVariableValue from getValueString
+			
+			return Message.Variable(
+					VariableName.Variable(
+						StringTools.trim(expression),
+						StringTools.trim(expression),
+						TypeHelpers.getVariableValue(StringTools.trim(expression), value)
+						//VariableValue.Item(
+						//	TypeHelpers.getValueTypeName(value),
+						//	TypeHelpers.getValueString(value),
+						//	VariableNameList.Terminator
+						//)
+					)
+			);
+        }
+        catch (e : Dynamic) {
+            mStateMutex.release();
+            if (e == Debugger.NONEXISTENT_VALUE) {
+                return ErrorEvaluatingExpression("No such value");
+            }
+            else if (e == Debugger.THREAD_NOT_STOPPED) {
+                return ErrorCurrentThreadNotStopped(mCurrentThreadNumber);
+            }
+            else {
+                return ErrorEvaluatingExpression(e);
+            }
+        }
+	}
 
     private function setExpression(unsafe : Bool, lhs : String,
                                    rhs : String) : Message
@@ -983,7 +1031,7 @@ class DebuggerThread
 
             mStateMutex.release();
 
-            return Value(StringTools.trim(lhs),
+            return Message.Value(StringTools.trim(lhs),
                          TypeHelpers.getValueTypeName(value),
                          TypeHelpers.getValueString(value));
         }
@@ -1265,6 +1313,56 @@ private class TypeHelpers
 
         return ret + indent + "}";
     }
+	
+	public static function getVariableValue(parentName:String, value:Dynamic): VariableValue
+	{
+        switch (Type.typeof(value)) {
+        case TUnknown:
+        case TInt:
+        case TBool:
+        case TFloat:
+        case TEnum(e):
+        case TNull:
+        case TFunction:
+			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+        case TObject:
+			trace("TObjeect: " + Std.string(value));
+			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+            //return ("Class<" + Std.string(value) + ">" +
+            //        getClassValueString(value, indent));
+        case TClass(Array):
+            var arr : Array<Dynamic> = cast value;
+			var list: VariableNameList = VariableNameList.Terminator;
+			for (i in 0...arr.length) {
+				//list = VariableNameList.Element(VariableName.VariableNoValue(Std.string(i), parentName + "[" + i + "]"), list);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(i), 
+						parentName + "[" + i + "]", 
+						getVariableValue(parentName + "[" + i + "]", arr[i])),
+					list
+				);
+			}
+			return VariableValue.Item(getValueTypeName(value), "arr", list);
+        case TClass(String):
+			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+        case TClass(DebuggerVariables):
+			return VariableValue.Item(getValueTypeName(value), value.toString(), VariableNameList.Terminator);
+		/*
+        case TClass(c):
+            if (ellipseForObjects) {
+                return "...";
+            }
+            var klass = Type.getClass(value);
+            if (klass == null) {
+                return "???";
+            }
+            return getInstanceValueString(Type.getClass(value), value, indent);
+		*/
+        }
+        
+		return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+	}
 }
 
 
