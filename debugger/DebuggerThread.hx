@@ -985,12 +985,11 @@ class DebuggerThread
 
             mStateMutex.release();
 
-			// make new getVariableValue from getValueString
-			
 			return Message.Variable(
 					VariableName.Variable(
 						StringTools.trim(expression),
 						StringTools.trim(expression),
+						false,
 						TypeHelpers.getVariableValue(StringTools.trim(expression), value)
 						//VariableValue.Item(
 						//	TypeHelpers.getValueTypeName(value),
@@ -1202,7 +1201,7 @@ private class TypeHelpers
             return Std.string(value);
         case TObject:
             return ("Class<" + Std.string(value) + ">" +
-                    getClassValueString(value, indent));
+                    getAnonValueString(value, indent));
         case TClass(Array):
             var arr : Array<Dynamic> = cast value;
             if (arr.length == 0) {
@@ -1239,6 +1238,26 @@ private class TypeHelpers
         }
         
         return Std.string(value);
+    }
+
+    public static function getAnonValueString(value : Dynamic,
+                                               indent : String) : String
+    {
+        var ret = "\n" + indent + "{\n";
+
+        var fields = new Array<String>();
+
+		for (f in Reflect.fields(value)) {
+			fields.unshift(f);
+		}
+		for (f in fields) {
+			var fieldValue = Reflect.field(value, f);
+            ret += (indent + "    " + f + " : " + 
+                    getValueTypeName(fieldValue) + " = " +
+                    getValueString(fieldValue, indent + "    ", true) + "\n");
+        }
+
+        return ret + indent + "}";
     }
 
     public static function getClassValueString(klass : Class<Dynamic>,
@@ -1327,19 +1346,35 @@ private class TypeHelpers
 			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
         case TObject:
 			trace("TObjeect: " + Std.string(value));
-			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
-            //return ("Class<" + Std.string(value) + ">" +
-            //        getClassValueString(value, indent));
+			var list: VariableNameList = VariableNameList.Terminator;
+			var fields = new Array<String>();
+			for (f in Reflect.fields(value)) {
+				fields.unshift(f);
+			}
+			for (f in fields) {
+				var fieldValue = Reflect.field(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+			return VariableValue.Item(getValueTypeName(value), "tobject", list);
         case TClass(Array):
             var arr : Array<Dynamic> = cast value;
 			var list: VariableNameList = VariableNameList.Terminator;
 			for (i in 0...arr.length) {
-				//list = VariableNameList.Element(VariableName.VariableNoValue(Std.string(i), parentName + "[" + i + "]"), list);
 				list = VariableNameList.Element(
 					VariableName.Variable(
 						Std.string(i), 
 						parentName + "[" + i + "]", 
-						getVariableValue(parentName + "[" + i + "]", arr[i])),
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "[" + i + "]", arr[i])),
 					list
 				);
 			}
@@ -1348,17 +1383,65 @@ private class TypeHelpers
 			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
         case TClass(DebuggerVariables):
 			return VariableValue.Item(getValueTypeName(value), value.toString(), VariableNameList.Terminator);
-		/*
         case TClass(c):
-            if (ellipseForObjects) {
-                return "...";
-            }
-            var klass = Type.getClass(value);
-            if (klass == null) {
-                return "???";
-            }
-            return getInstanceValueString(Type.getClass(value), value, indent);
-		*/
+			var klass = Type.getClass(value);
+			if (klass == null) {
+				// this is abnormal?
+				return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+			}
+			var list: VariableNameList = VariableNameList.Terminator;
+			var fields = new Array<String>();
+
+			// todo, do a recursive super class lookup first and get fields from parent-most class first
+			for (f in Type.getInstanceFields(klass)) {
+				if (Reflect.isFunction(Reflect.field(value, f))) {
+					continue;
+				}
+				fields.unshift(f);
+			}
+			
+			for (f in fields) {
+				var fieldValue = Reflect.getProperty(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+
+			fields = new Array<String>();
+
+			// Although the instance fields returned by Type seem to include super
+			// class variables also, class variables do not, so iterate through
+			// super classes manually
+			while (klass != null) {
+				for (f in Type.getClassFields(klass)) {
+					if (Reflect.isFunction(Reflect.field(value, f))) {
+						continue;
+					}
+					fields.push(f);
+				}
+				klass = Type.getSuperClass(klass);
+			}
+
+			for (f in fields) {
+				var fieldValue = Reflect.getProperty(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						true,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+			
+			return VariableValue.Item(getValueTypeName(value), "tclass", list);
         }
         
 		return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
@@ -1576,6 +1659,8 @@ private class ExpressionHelper
             throw "Cannot set value";
         case ExpressionEnum.FieldRef(value, field):
             Reflect.setProperty(value, field, rhs_value);
+        case ExpressionEnum.AnonymousFieldRef(value, field):
+            Reflect.setField(value, field, rhs_value);
         case ExpressionEnum.DebuggerFieldRef(field):
             varSrc.dbgVars.set(field, rhs_value);
         case ExpressionEnum.DebuggerFields:
@@ -1603,6 +1688,8 @@ private class ExpressionHelper
             return value;
         case ExpressionEnum.FieldRef(value, field):
             return Reflect.getProperty(value, field);
+        case ExpressionEnum.AnonymousFieldRef(value, field):
+            return Reflect.field(value, field);
         case ExpressionEnum.DebuggerFieldRef(field):
             var value = varSrc.dbgVars.get(field);
             if (value == null) {
@@ -1886,7 +1973,21 @@ private class ExpressionHelper
         switch (Type.typeof(value)) {
         // TObject means that value is already a Class<Dynamic>
         case TObject:
-            klass = value;
+			// anonymous object
+			for (f in Reflect.fields(value)) {
+				if (f == arr[index]) {
+					if (index == (arr.length - 1)) {
+						return ExpressionEnum.AnonymousFieldRef(value, arr[index]);
+					} else {
+						value = Reflect.field(value, arr[index]);
+						if (value == null) {
+							throw "Null value dereference " + join(arr, ".", 0, index);
+						}
+						return resolveField(value, arr, index + 1);
+					}
+				}
+			}
+			return null;
         case TClass(c):
             klass = Type.getClass(value);
         default:
@@ -2016,6 +2117,7 @@ private enum ExpressionEnum
 {
     Value(value : Dynamic);
     FieldRef(value : Dynamic, field : String);
+	AnonymousFieldRef(Value : Dynamic, field : String);
     DebuggerFieldRef(field : String);
     DebuggerFields;
     ArrayRef(value : Dynamic, index : Int);

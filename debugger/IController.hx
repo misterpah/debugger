@@ -245,12 +245,12 @@ enum ThreadWhereList
 enum VariableValue
 {
 	Item(type : String, value : String, children : VariableNameList);
+	NoItem;
 }
 
 enum VariableName
 {
-	Variable(name : String, fullName : String, value : VariableValue);
-	VariableNoValue(name: String, fullName :  String);
+	Variable(name : String, fullName : String, isStatic : Bool, value : VariableValue);
 }
 
 enum VariableNameList
