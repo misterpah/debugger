@@ -986,17 +986,8 @@ class DebuggerThread
             mStateMutex.release();
 
 			return Message.Variable(
-					VariableName.Variable(
-						StringTools.trim(expression),
-						StringTools.trim(expression),
-						false,
-						TypeHelpers.getVariableValue(StringTools.trim(expression), value)
-						//VariableValue.Item(
-						//	TypeHelpers.getValueTypeName(value),
-						//	TypeHelpers.getValueString(value),
-						//	VariableNameList.Terminator
-						//)
-					)
+					StringTools.trim(expression),
+					TypeHelpers.getVariableValue(StringTools.trim(expression), value)
 			);
         }
         catch (e : Dynamic) {

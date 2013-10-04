@@ -308,5 +308,5 @@ enum Message
                   fileName : String, lineNumber : Int);
 
 	MessageId(id : Int, message : Message);
-    Variable(variable : VariableName);
+	Variable(name : String, value : VariableValue);
 }
