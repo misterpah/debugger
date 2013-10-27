@@ -1,0 +1,5 @@
+<project name="debugger" url="https://github.com/zaynyatyi/hxcpp/blob/master/haxelib.xml" license="Custom">
+    <user name="zaynyatyi"/>
+    <description>Debugger for neko and cpp targets</description>
+    <version name="1.0.0">Just initial release</version>
+</project>

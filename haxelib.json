@@ -6,6 +6,6 @@
     "contributors" : [ "TiVo, Inc." ],
     "releasenote" : "",
     "dependencies" : {
-        "hxcpp"
+        "hxcpp" : ""
     }
 }
