@@ -421,6 +421,8 @@ class CommandLineController implements IController
             Sys.println("Thread " + number + " stopped in " +
                         className + "." + functionName + "() at " +
                         fileName + ":" + lineNumber + ".");
+        case _:
+        	// Do nothing
         }
     }
     
