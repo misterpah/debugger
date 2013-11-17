@@ -401,8 +401,9 @@ class CommandLineController implements IController
             Sys.println("At frame " + number + ".");
 
         case Variables(list):
+            Sys.println("local vars {");
             printStringList(list, "\n");
-            Sys.println("");
+            Sys.println("\n}");
             
         case Value(expression, type, value):
             Sys.println(expression + " : " + type + " = " + value);
