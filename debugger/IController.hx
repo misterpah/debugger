@@ -148,6 +148,12 @@ enum Command
     SetExpression(unsafe: Bool, lhs : String, rhs : String);
     // Response: Valuet, ErrorCurrentThreadNotStopped,
     // ErrorEvaluatingExpression
+	
+    CommandId(id: Int, command: Command);
+	// Response: MessageId
+
+    GetExpression(unsafe: Bool, expression : String);
+	// Response: Variable
 }
 
 
@@ -236,6 +242,22 @@ enum ThreadWhereList
           next : ThreadWhereList);
 }
 
+enum VariableValue
+{
+	Item(type : String, value : String, children : VariableNameList);
+	NoItem;
+}
+
+enum VariableName
+{
+	Variable(name : String, fullName : String, isStatic : Bool, value : VariableValue);
+}
+
+enum VariableNameList
+{
+	Terminator;
+	Element(variable : VariableName, next: VariableNameList);
+}
 
 /**
  * Messages are delivered by the debugger thread in response to Commands and
@@ -284,4 +306,7 @@ enum Message
     ThreadStarted(number : Int);
     ThreadStopped(number : Int, className : String, functionName : String,
                   fileName : String, lineNumber : Int);
+
+	MessageId(id : Int, message : Message);
+	Variable(name : String, value : VariableValue);
 }

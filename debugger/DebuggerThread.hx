@@ -143,107 +143,119 @@ class DebuggerThread
         // Now run the main loop
         try {
             while (true) {
-                switch (mController.getNextCommand()) {
+				var cmd:Command = mController.getNextCommand();
+				var id:Int = -1;
+				switch (cmd) {
+				case CommandId(id2, cmd2):
+					id = id2;
+					cmd = cmd2;
+				default:
+				}
+                switch (cmd) {
+				case CommandId(id2, cmd2):
                 case Exit:
-                    emit(Exited);
+                    emit(Exited, id);
                     Sys.exit(0);
 
                 case Detach:
-                    emit(Detached);
+                    emit(Detached, id);
                     return;
 
                 case Files:
-                    emit(this.files());
+                    emit(this.files(), id);
 
                 case Classes:
-                    emit(this.classes());
+                    emit(this.classes(), id);
 
                 case Mem:
-                    emit(this.mem());
+                    emit(this.mem(), id);
 
                 case Compact:
-                    emit(this.compact());
+                    emit(this.compact(), id);
 
                 case Collect:
-                    emit(this.collect());
+                    emit(this.collect(), id);
 
                 case SetCurrentThread(number):
-                    emit(this.setCurrentThread(number));
+                    emit(this.setCurrentThread(number), id);
 
                 case AddFileLineBreakpoint(fileName, lineNumber):
-                    emit(this.addFileLineBreakpoint(fileName, lineNumber));
+                    emit(this.addFileLineBreakpoint(fileName, lineNumber), id);
                     
                 case AddClassFunctionBreakpoint(className, functionName):
                     emit(this.addClassFunctionBreakpoint
-                         (className, functionName));
+                         (className, functionName), id);
 
                 case ListBreakpoints(enabled, disabled):
-                    emit(this.listBreakpoints(enabled, disabled));
+                    emit(this.listBreakpoints(enabled, disabled), id);
 
                 case DescribeBreakpoint(number):
-                    emit(this.describeBreakpoint(number));
+                    emit(this.describeBreakpoint(number), id);
 
                 case DisableAllBreakpoints:
-                    emit(this.disableAllBreakpoints());
+                    emit(this.disableAllBreakpoints(), id);
 
                 case DisableBreakpointRange(first, last):
-                    emit(this.disableBreakpointRange(first, last));
+                    emit(this.disableBreakpointRange(first, last), id);
 
                 case EnableAllBreakpoints:
-                    emit(this.enableAllBreakpoints());
+                    emit(this.enableAllBreakpoints(), id);
 
                 case EnableBreakpointRange(first, last):
-                    emit(this.enableBreakpointRange(first, last));
+                    emit(this.enableBreakpointRange(first, last), id);
 
                 case DeleteAllBreakpoints:
-                    emit(this.deleteAllBreakpoints());
+                    emit(this.deleteAllBreakpoints(), id);
 
                 case DeleteBreakpointRange(first, last):
-                    emit(this.deleteBreakpointRange(first, last));
+                    emit(this.deleteBreakpointRange(first, last), id);
 
                 case BreakNow:
-                    emit(this.breakNow());
+                    emit(this.breakNow(), id);
 
                 case Continue(count):
-                    emit(this.continueCurrent(count));
+                    emit(this.continueCurrent(count), id);
 
                 case Step(count):
-                    emit(this.step(count));
+                    emit(this.step(count), id);
 
                 case Next(count):
-                    emit(this.next(count));
+                    emit(this.next(count), id);
 
                 case Finish(count):
-                    emit(this.finish(count));
+                    emit(this.finish(count), id);
 
                 case WhereCurrentThread(unsafe):
-                    emit(this.whereCurrentThread(unsafe));
+                    emit(this.whereCurrentThread(unsafe), id);
 
                 case WhereAllThreads:
-                    emit(this.whereAllThreads());
+                    emit(this.whereAllThreads(), id);
 
                 case Up(count):
-                    emit(this.up(count));
+                    emit(this.up(count), id);
 
                 case Down(count):
-                    emit(this.down(count));
+                    emit(this.down(count), id);
 
                 case SetFrame(number):
-                    emit(this.setFrame(number));
+                    emit(this.setFrame(number), id);
 
                 case Variables(unsafe):
-                    emit(this.variables(unsafe));
+                    emit(this.variables(unsafe), id);
 
                 case PrintExpression(unsafe, expression):
-                    emit(this.printExpression(unsafe, expression));
+                    emit(this.printExpression(unsafe, expression), id);
 
                 case SetExpression(unsafe, lhs, rhs):
-                    emit(this.setExpression(unsafe, lhs, rhs));
+                    emit(this.setExpression(unsafe, lhs, rhs), id);
+				
+				case GetExpression(unsafe, expression):
+					emit(this.getExpression(unsafe, expression), id);
                 }
             }
         }
         catch (e : Dynamic) {
-            emit(ErrorInternal("Exception in debugger, detaching: " + e));
+            emitNoId(ErrorInternal("Exception in debugger, detaching: " + e));
         }
 
         // No longer want to know about thread events
@@ -252,7 +264,7 @@ class DebuggerThread
         // Delete all breakpoints from the debugged process
         this.deleteAllBreakpoints();
 
-        emit(Detached);
+        emitNoId(Detached);
 
         // Ensure that all threads are running
         Debugger.continueThreads(-1, 1);
@@ -269,33 +281,41 @@ class DebuggerThread
     {
         switch (event) {
         case Debugger.THREAD_CREATED:
-            emit(ThreadCreated(threadNumber));
+            emitNoId(ThreadCreated(threadNumber));
         case Debugger.THREAD_TERMINATED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadTerminated(threadNumber));
+            emitNoId(ThreadTerminated(threadNumber));
         case Debugger.THREAD_STARTED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadStarted(threadNumber));
+            emitNoId(ThreadStarted(threadNumber));
         case Debugger.THREAD_STOPPED:
             mStateMutex.acquire();
             if (threadNumber == mCurrentThreadNumber) {
                 mCurrentThreadInfo = null;
             }
             mStateMutex.release();
-            emit(ThreadStopped(threadNumber, className, functionName,
+            emitNoId(ThreadStopped(threadNumber, className, functionName,
                                fileName, lineNumber));
         }
     }
 
-    private function emit(message : Message)
+    private function emit(message : Message, id : Int)
+    {
+		if (id != -1) {
+			message = MessageId(id, message);
+		}
+        mController.acceptMessage(message);
+    }
+
+    private function emitNoId(message : Message)
     {
         mController.acceptMessage(message);
     }
@@ -600,9 +620,9 @@ class DebuggerThread
         for (b in breakpoint.bps()) {
             switch (b) {
             case BP.FileLine(bp, fileName, lineNumber):
-                list = FileLine(fileName, lineNumber, list);
+                list = BreakpointLocationList.FileLine(fileName, lineNumber, list);
             case BP.ClassFunction(bp, className, functionName):
-                list = ClassFunction(className, functionName, list);
+                list = BreakpointLocationList.ClassFunction(className, functionName, list);
             }
         }
 
@@ -931,7 +951,7 @@ class DebuggerThread
 
             mStateMutex.release();
 
-            return Value(StringTools.trim(expression),
+            return Message.Value(StringTools.trim(expression),
                          TypeHelpers.getValueTypeName(value),
                          TypeHelpers.getValueString(value));
         }
@@ -948,6 +968,41 @@ class DebuggerThread
             }
         }
     }
+	
+	private function getExpression(unsafe : Bool, expression : String) : Message
+	{
+        mStateMutex.acquire();
+        
+        // Just to ensure that the current stack frame is known
+        this.getCurrentThreadInfoLocked();
+
+        try {
+            var value : Dynamic = ExpressionHelper.getValue
+                (expression, { threadNumber : mCurrentThreadNumber,
+                               stackFrame : mCurrentStackFrame,
+                               dbgVars : mDebuggerVariables,
+                               unsafe : unsafe });
+
+            mStateMutex.release();
+
+			return Message.Variable(
+					StringTools.trim(expression),
+					TypeHelpers.getVariableValue(StringTools.trim(expression), value)
+			);
+        }
+        catch (e : Dynamic) {
+            mStateMutex.release();
+            if (e == Debugger.NONEXISTENT_VALUE) {
+                return ErrorEvaluatingExpression("No such value");
+            }
+            else if (e == Debugger.THREAD_NOT_STOPPED) {
+                return ErrorCurrentThreadNotStopped(mCurrentThreadNumber);
+            }
+            else {
+                return ErrorEvaluatingExpression(e);
+            }
+        }
+	}
 
     private function setExpression(unsafe : Bool, lhs : String,
                                    rhs : String) : Message
@@ -966,7 +1021,7 @@ class DebuggerThread
 
             mStateMutex.release();
 
-            return Value(StringTools.trim(lhs),
+            return Message.Value(StringTools.trim(lhs),
                          TypeHelpers.getValueTypeName(value),
                          TypeHelpers.getValueString(value));
         }
@@ -1137,7 +1192,7 @@ private class TypeHelpers
             return Std.string(value);
         case TObject:
             return ("Class<" + Std.string(value) + ">" +
-                    getClassValueString(value, indent));
+                    getAnonValueString(value, indent));
         case TClass(Array):
             var arr : Array<Dynamic> = cast value;
             if (arr.length == 0) {
@@ -1174,6 +1229,26 @@ private class TypeHelpers
         }
         
         return Std.string(value);
+    }
+
+    public static function getAnonValueString(value : Dynamic,
+                                               indent : String) : String
+    {
+        var ret = "\n" + indent + "{\n";
+
+        var fields = new Array<String>();
+
+		for (f in Reflect.fields(value)) {
+			fields.unshift(f);
+		}
+		for (f in fields) {
+			var fieldValue = Reflect.field(value, f);
+            ret += (indent + "    " + f + " : " + 
+                    getValueTypeName(fieldValue) + " = " +
+                    getValueString(fieldValue, indent + "    ", true) + "\n");
+        }
+
+        return ret + indent + "}";
     }
 
     public static function getClassValueString(klass : Class<Dynamic>,
@@ -1248,6 +1323,120 @@ private class TypeHelpers
 
         return ret + indent + "}";
     }
+	
+	public static function getVariableValue(parentName:String, value:Dynamic): VariableValue
+	{
+        switch (Type.typeof(value)) {
+        case TUnknown:
+        case TInt:
+        case TBool:
+        case TFloat:
+        case TEnum(e):
+        case TNull:
+        case TFunction:
+			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+        case TObject:
+			trace("TObjeect: " + Std.string(value));
+			var list: VariableNameList = VariableNameList.Terminator;
+			var fields = new Array<String>();
+			for (f in Reflect.fields(value)) {
+				fields.unshift(f);
+			}
+			for (f in fields) {
+				var fieldValue = Reflect.field(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+			return VariableValue.Item(getValueTypeName(value), "tobject", list);
+        case TClass(Array):
+            var arr : Array<Dynamic> = cast value;
+			var list: VariableNameList = VariableNameList.Terminator;
+			for (i in 0...arr.length) {
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(i), 
+						parentName + "[" + i + "]", 
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "[" + i + "]", arr[i])),
+					list
+				);
+			}
+			return VariableValue.Item(getValueTypeName(value), "arr", list);
+        case TClass(String):
+			return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+        case TClass(DebuggerVariables):
+			return VariableValue.Item(getValueTypeName(value), value.toString(), VariableNameList.Terminator);
+        case TClass(c):
+			var klass = Type.getClass(value);
+			if (klass == null) {
+				// this is abnormal?
+				return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+			}
+			var list: VariableNameList = VariableNameList.Terminator;
+			var fields = new Array<String>();
+
+			// todo, do a recursive super class lookup first and get fields from parent-most class first
+			for (f in Type.getInstanceFields(klass)) {
+				if (Reflect.isFunction(Reflect.field(value, f))) {
+					continue;
+				}
+				fields.unshift(f);
+			}
+			
+			for (f in fields) {
+				var fieldValue = Reflect.getProperty(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						false,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+
+			fields = new Array<String>();
+
+			// Although the instance fields returned by Type seem to include super
+			// class variables also, class variables do not, so iterate through
+			// super classes manually
+			while (klass != null) {
+				for (f in Type.getClassFields(klass)) {
+					if (Reflect.isFunction(Reflect.field(value, f))) {
+						continue;
+					}
+					fields.push(f);
+				}
+				klass = Type.getSuperClass(klass);
+			}
+
+			for (f in fields) {
+				var fieldValue = Reflect.getProperty(value, f);
+				list = VariableNameList.Element(
+					VariableName.Variable(
+						Std.string(f), 
+						parentName + "." + f, 
+						true,
+						VariableValue.NoItem),
+						//getVariableValue(parentName + "." + f, fieldValue)),
+					list
+				);
+			}
+			
+			return VariableValue.Item(getValueTypeName(value), "tclass", list);
+        }
+        
+		return VariableValue.Item(getValueTypeName(value), Std.string(value), VariableNameList.Terminator);
+	}
 }
 
 
@@ -1461,6 +1650,8 @@ private class ExpressionHelper
             throw "Cannot set value";
         case ExpressionEnum.FieldRef(value, field):
             Reflect.setProperty(value, field, rhs_value);
+        case ExpressionEnum.AnonymousFieldRef(value, field):
+            Reflect.setField(value, field, rhs_value);
         case ExpressionEnum.DebuggerFieldRef(field):
             varSrc.dbgVars.set(field, rhs_value);
         case ExpressionEnum.DebuggerFields:
@@ -1488,6 +1679,8 @@ private class ExpressionHelper
             return value;
         case ExpressionEnum.FieldRef(value, field):
             return Reflect.getProperty(value, field);
+        case ExpressionEnum.AnonymousFieldRef(value, field):
+            return Reflect.field(value, field);
         case ExpressionEnum.DebuggerFieldRef(field):
             var value = varSrc.dbgVars.get(field);
             if (value == null) {
@@ -1771,7 +1964,21 @@ private class ExpressionHelper
         switch (Type.typeof(value)) {
         // TObject means that value is already a Class<Dynamic>
         case TObject:
-            klass = value;
+			// anonymous object
+			for (f in Reflect.fields(value)) {
+				if (f == arr[index]) {
+					if (index == (arr.length - 1)) {
+						return ExpressionEnum.AnonymousFieldRef(value, arr[index]);
+					} else {
+						value = Reflect.field(value, arr[index]);
+						if (value == null) {
+							throw "Null value dereference " + join(arr, ".", 0, index);
+						}
+						return resolveField(value, arr, index + 1);
+					}
+				}
+			}
+			return null;
         case TClass(c):
             klass = Type.getClass(value);
         default:
@@ -1901,6 +2108,7 @@ private enum ExpressionEnum
 {
     Value(value : Dynamic);
     FieldRef(value : Dynamic, field : String);
+	AnonymousFieldRef(Value : Dynamic, field : String);
     DebuggerFieldRef(field : String);
     DebuggerFields;
     ArrayRef(value : Dynamic, index : Int);
